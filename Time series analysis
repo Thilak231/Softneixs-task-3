@@ -1,0 +1,111 @@
+# -----------------------------------------------------------------
+# STEP 1: IMPORT LIBRARIES
+# -----------------------------------------------------------------
+import pandas as pd
+import matplotlib.pyplot as plt
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tools.eval_measures import rmse
+from google.colab import files # For uploading the file
+import warnings
+
+# Ignore harmless warnings
+warnings.filterwarnings('ignore')
+print("--- Libraries imported ---")
+
+
+# -----------------------------------------------------------------
+# STEP 2: UPLOAD YOUR LOCAL CSV FILE
+# -----------------------------------------------------------------
+print("Please upload your 'airline-passengers.csv' file.")
+uploaded = files.upload()
+
+# Get the filename (assuming you uploaded one file)
+file_name = list(uploaded.keys())[0] 
+print(f"--- Successfully uploaded {file_name} ---")
+
+
+# -----------------------------------------------------------------
+# STEP 3: LOAD AND PREPARE DATA
+# -----------------------------------------------------------------
+# Load the dataset
+df = pd.read_csv(file_name, parse_dates=['Month'], index_col='Month')
+
+# Rename the column (the original CSV has a "#" in the name)
+df.rename(columns={'#Passengers': 'Passengers'}, inplace=True)
+
+# Resample to Quarterly (as shown in guide)
+print(df.resample('Q').mean().head())
+
+
+# -----------------------------------------------------------------
+# STEP 4: DECOMPOSITION
+# -----------------------------------------------------------------
+# Decompose the series (as shown in guide)
+decomposition = seasonal_decompose(df['Passengers'], model='multiplicative')
+
+fig = decomposition.plot()
+fig.set_size_inches(12, 8)
+plt.suptitle('Multiplicative Decomposition', y=1.02)
+plt.show()
+
+
+# -----------------------------------------------------------------
+# STEP 5: MOVING AVERAGES
+# -----------------------------------------------------------------
+# 6-month and 12-month moving averages
+df['MA_6'] = df['Passengers'].rolling(window=6).mean()
+df['MA_12'] = df['Passengers'].rolling(window=12).mean()
+
+# Plot comparison
+plt.figure(figsize=(12, 6))
+plt.plot(df['Passengers'], label='Actual')
+plt.plot(df['MA_6'], label='6-Month MA', linestyle='--')
+plt.plot(df['MA_12'], label='12-Month MA', linestyle='--')
+plt.title('Moving Averages Smoothing')
+plt.legend()
+plt.show()
+
+
+# -----------------------------------------------------------------
+# STEP 6: ARIMA FORECASTING
+# -----------------------------------------------------------------
+# Split data (last 12 months for testing)
+train = df.iloc[:-12]
+test = df.iloc[-12:]
+
+# Fit ARIMA model (using parameters from the guide)
+# This is a Seasonal ARIMA (SARIMA) model
+model = ARIMA(train['Passengers'], 
+              order=(2,1,1), 
+              seasonal_order=(1,1,1,12))
+result = model.fit()
+
+print(result.summary())
+
+# Forecast
+forecast = result.forecast(steps=len(test))
+
+
+# -----------------------------------------------------------------
+# STEP 7: PLOT FORECAST AND EVALUATE
+# -----------------------------------------------------------------
+# Calculate RMSE
+rmse_value = rmse(test['Passengers'], forecast)
+print(f"\n--- Model Performance ---")
+print(f"RMSE: {rmse_value:.2f}")
+
+# Plot forecast vs actual
+plt.figure(figsize=(12, 6))
+plt.plot(train['Passengers'], label='Training Data')
+plt.plot(test['Passengers'], label='Actual', color='orange')
+plt.plot(forecast, label='Forecast', color='red', linestyle='--')
+plt.fill_between(test.index, 
+                 result.get_forecast_conf_int(steps=len(test))['lower Passengers'], 
+                 result.get_forecast_conf_int(steps=len(test))['upper Passengers'], 
+                 color='k', alpha=0.1)
+plt.title(f'ARIMA Forecast (RMSE={rmse_value:.2f})')
+plt.legend()
+plt.show()
+
+print("--- Analysis Complete ---")
